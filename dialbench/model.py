@@ -77,15 +77,20 @@ def defaults(width, height):
         "pointer": None,
         "low_value": 0, "high_value": 100, "unit": "kPa", "clockwise": True,
         "band_in": .79, "band_out": .97, "dark_cut": 25, "bright_cut": 235,
+        "band_split": False,
     }
+
+
+def source(value, record):
+    if not isinstance(value, str) or value not in record["sources"]:
+        raise Invalid("Choose an available photo.")
+    return value
 
 
 def settings(value, record):
     override = document(value) if value is not None else {}
     selected = {**defaults(record["width"], record["height"]), **record["settings"], **override}
-    role = selected["source"]
-    if not isinstance(role, str) or role not in record["sources"]:
-        raise Invalid("Choose an available photo.")
+    role = source(selected["source"], record)
     coords = {name: point(selected[name], record) for name in ("center", "low_mark", "high_mark")}
     direction = selected["clockwise"]
     if not isinstance(direction, bool):
@@ -108,11 +113,14 @@ def settings(value, record):
     if band_out - band_in < .02 or dark >= bright:
         raise Invalid("The upper scan radius and highlight threshold must be higher.")
     pointer = selected["pointer"]
+    split = selected["band_split"]
+    if not isinstance(split, bool):
+        raise Invalid("Choose whether to use both photos.")
     return {
         **coords, "source": role, "pointer": point(pointer, record) if pointer is not None else None,
         "clockwise": direction, "low_value": low, "high_value": high,
         "unit": text(selected["unit"], "units", 20), "band_in": band_in,
-        "band_out": band_out, "dark_cut": dark, "bright_cut": bright,
+        "band_out": band_out, "dark_cut": dark, "bright_cut": bright, "band_split": split,
     }
 
 

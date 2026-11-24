@@ -85,6 +85,14 @@ fieldset { border: 0; padding: 0; margin-inline: 0; }
 details summary { font-size: 12px; color: var(--green); cursor: pointer; }
 details .grid2 { margin-top: 8px; }
 .plot { display: block; width: 100%; aspect-ratio: 2.35; background: #131d17; border-radius: 6px; }
+.allocation { display: grid; gap: 6px; font-size: 12px; }
+.allocation-summary { color: var(--accent); }
+.allocation-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.allocation-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; color: var(--muted); }
+.allocation-source { color: var(--green); font-weight: 640; }
+.allocation-source[data-source=gap] { color: #ffb195; }
+.allocation-list button.link { padding: 0; border: 0; background: transparent; color: var(--green); text-decoration: underline; font-size: 12px; }
+.gap-row td { color: #b58b78; font-style: italic; }
 .table-wrap { overflow: auto; max-height: 230px; margin-top: 5px; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; white-space: nowrap; padding: 6px 7px 6px 0; border-bottom: 1px solid var(--line); }

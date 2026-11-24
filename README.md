@@ -13,6 +13,12 @@ imported photos, calibration, and saved inspections.
    Use Pixel probe or the coordinate form to check an exact source location.
 4. Inspect radial luminance, a scale-band trace, exposure clipping, or brightness
    spread. Click a profile row to see which source pixel produced it.
+   A scale-band scan can draw from both aligned photos: **Suggest split** keeps
+   the longest readable stretch of one photo, hands stretches the other photo
+   reads better to that one, and leaves stretches neither can read blank so you
+   know what to reshoot. **Use suggested photo split** adopts the allocation;
+   each row then names its photo, and **Photo** on a row (or "Show photo")
+   reopens that original at the row's pixel.
 5. Save calibration for future sessions or save an inspection snapshot.
    A snapshot reopens its original source, with downloads for CSV and marked PNG.
 6. Use the Photo preparation workspace to process a copy of a photo and attach

@@ -64,8 +64,12 @@
           <option value="lighting">Exposure check</option><option value="contrast">Face and surround</option>
         </select>
         <div id="results" class="muted">No photo selected.</div>
+        <div id="allocation" class="allocation" hidden></div>
+        <div id="split-actions" class="actions" hidden><button id="adopt" class="outline">Use suggested photo split</button></div>
+        <div id="single-actions" class="actions" hidden><button id="single" class="outline">Scan shown photo only</button></div>
         <div class="actions">
           <button id="analyze" class="outline" disabled>Inspect</button>
+          <button id="suggest" class="outline" disabled hidden>Suggest split</button>
           <button id="save" disabled>Save inspection</button>
           <button id="return" class="outline" hidden>Return to current</button>
         </div>

@@ -12,17 +12,18 @@ from . import analysis, frame
 YELLOW = (242, 180, 82, 240)
 TEAL = (101, 224, 209, 240)
 DARK = (19, 29, 27, 230)
+MISSING = (236, 104, 88, 240)
 
 
 def tables(report):
     rows = report["rows"]
     title = StringIO(newline="")
     columns = list(dict.fromkeys(key for row in rows for key in row))
-    common = ["inspection", "source", "center_x", "center_y"]
+    common = ["inspection", "scan_source", "center_x", "center_y"]
     writer = DictWriter(title, fieldnames=[*common, *columns])
     writer.writeheader()
     settings = report["settings"]
-    context = {"inspection": report["heading"], "source": settings["source"],
+    context = {"inspection": report["heading"], "scan_source": settings["source"],
                "center_x": settings["center"][0], "center_y": settings["center"][1]}
     writer.writerows([{**context, **row} for row in rows])
     return title.getvalue()
@@ -35,9 +36,19 @@ def outline_arc(draw, dial, radius, color, width):
     draw.line(coords, fill=color, width=width)
 
 
+def segment_arc(draw, dial, radius, start, end, color, width):
+    marks = max(1, ceil(end - start))
+    coords = [tuple(analysis.ray_point(dial, dial["start"] + dial["sign"] * (start + (end - start) * i / marks),
+                                       radius)) for i in range(marks + 1)]
+    draw.line(coords, fill=color, width=width)
+
+
 def overlay(library, record, report):
     settings, dial = report["settings"], report["geometry"]
-    data = frame.pixels(library, record, settings["source"])
+    role = settings["source"]
+    if report.get("stitched") and report.get("segments"):
+        role = next((entry["source"] for entry in report["segments"] if entry["source"]), role)
+    data = frame.pixels(library, record, role)
     picture = Image.fromarray(data, "RGB").convert("RGBA")
     mode = report["mode"]
     layer = Image.new("RGBA", picture.size)
@@ -50,9 +61,15 @@ def overlay(library, record, report):
     draw = ImageDraw.Draw(layer)
     stroke = max(2, min(picture.size) // 270)
     dial_radius = dial["radius"]
-    if mode == "arc":
-        for fraction in ("band_in", "band_out"):
-            outline_arc(draw, dial, dial_radius * settings[fraction], YELLOW, stroke)
+    radii = (dial_radius * settings["band_in"], dial_radius * settings["band_out"])
+    if mode == "arc" and report.get("stitched") and report.get("segments"):
+        for entry in report["segments"]:
+            color = YELLOW if entry["source"] == role else TEAL if entry["source"] else MISSING
+            for radius in radii:
+                segment_arc(draw, dial, radius, entry["start"], entry["end"], color, stroke)
+    elif mode == "arc":
+        for radius in radii:
+            outline_arc(draw, dial, radius, YELLOW, stroke)
     else:
         outline_arc(draw, dial, dial_radius, TEAL, stroke)
     if mode in {"reading", "radial"} and settings["pointer"] is not None:

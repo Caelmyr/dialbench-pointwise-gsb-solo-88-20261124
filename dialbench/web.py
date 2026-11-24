@@ -99,7 +99,9 @@ def install(app, root):
         chosen = payload()
         record = library.panel(panel_id)
         settings = model.settings(chosen.get("settings"), record)
-        return jsonify(analysis.inspect(library, record, settings, model.mode(chosen.get("mode"))))
+        mode = model.mode(chosen.get("mode"))
+        planning = bool(chosen.get("plan")) and mode == "arc" and len(record["sources"]) > 1
+        return jsonify(analysis.inspect(library, record, settings, mode, planning=planning))
 
     @desk.post("/panels/<panel_id>/point")
     def point_probe(panel_id):
@@ -107,7 +109,9 @@ def install(app, root):
         archive = chosen.get("report")
         record = library.report(panel_id, archive) if archive else library.panel(panel_id)
         settings = record["settings"] if archive else model.settings(chosen.get("settings"), record)
-        return jsonify(analysis.pixel_probe(library, record, settings, model.point(chosen.get("point"), record)))
+        role = model.source(chosen.get("source"), record) if chosen.get("source") else None
+        return jsonify(analysis.pixel_probe(library, record, settings,
+                                            model.point(chosen.get("point"), record), role))
 
     @desk.post("/panels/<panel_id>/reports")
     def archive(panel_id):
