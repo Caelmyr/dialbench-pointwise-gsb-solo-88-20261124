@@ -3,7 +3,8 @@
 const el = id => document.getElementById(id);
 const defaultMode = 'reading';
 const fields = ['low_value', 'high_value', 'unit', 'clockwise', 'band_in', 'band_out', 'dark_cut', 'bright_cut'];
-const state = {panel: null, settings: null, archived: null, tool: 'pointer', lastProbe: null, request: 0};
+const state = {panel: null, settings: null, archived: null, tool: 'pointer', lastProbe: null, request: 0,
+               suggestion: null, evidence: null, evidenceDismissed: false};
 
 function status(message, error = false) {
   el('status').textContent = message;
@@ -134,6 +135,9 @@ async function openPanel(id, supplied) {
   state.settings = {...next.settings};
   state.archived = null;
   state.lastProbe = null;
+  state.suggestion = null;
+  state.evidence = null;
+  state.evidenceDismissed = false;
   selectTool('pointer');
   el('mode').value = defaultMode;
   updateView();
@@ -147,6 +151,9 @@ async function openReport(id) {
   if (ticket !== state.request) return;
   state.archived = result;
   state.lastProbe = null;
+  state.suggestion = null;
+  state.evidence = null;
+  state.evidenceDismissed = false;
   selectTool('probe');
   updateView();
   render(result);
@@ -165,6 +172,33 @@ function paint() {
   const unit = Math.max(1, Math.min(width, height) / 280);
   ctx.lineWidth = unit;
   const tone = '#9df4dd';
+  const evidence = state.evidence;
+  if (evidence && evidence.length) {
+    ctx.lineCap = 'round';
+    for (const segment of evidence) {
+      ctx.strokeStyle = '#0f1f2b';
+      ctx.lineWidth = unit * 4.6;
+      ctx.beginPath();
+      ctx.moveTo(segment.x1, segment.y1);
+      ctx.lineTo(segment.x2, segment.y2);
+      ctx.stroke();
+      ctx.strokeStyle = '#8ad8ff';
+      ctx.lineWidth = unit * 2.3;
+      ctx.beginPath();
+      ctx.moveTo(segment.x1, segment.y1);
+      ctx.lineTo(segment.x2, segment.y2);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    if (state.suggestion) {
+      const [tipX, tipY] = state.suggestion.point;
+      ctx.strokeStyle = '#8ad8ff';
+      ctx.lineWidth = unit * 1.2;
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, unit * 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
   const traversed = config.pointer;
   if (traversed) {
     ctx.strokeStyle = '#ffcb76';
@@ -236,28 +270,130 @@ const columns = {
   contrast: [['zone', 'Zone'], ['median', 'Median'], ['spread', 'P90–P10']],
 };
 
+function angleDelta(a, b) {
+  return Math.abs(((a - b + 180) % 360 + 360) % 360 - 180);
+}
+
+function renderSuggestion(area, suggestion, row) {
+  state.suggestion = null;
+  if (!suggestion) {
+    state.evidence = null;
+    return;
+  }
+  const card = document.createElement('div');
+  card.className = 'suggest';
+  const label = document.createElement('p');
+  label.className = 'label';
+  label.textContent = 'NEEDLE SUGGESTION';
+  card.append(label);
+  if (suggestion.state === 'ready') {
+    state.suggestion = suggestion;
+    if (!state.evidenceDismissed) state.evidence = suggestion.segments;
+    const value = document.createElement('p');
+    value.className = 'suggest-value';
+    value.textContent = suggestion.reading === null
+      ? suggestion.angle_deg.toFixed(2) + '° · outside the calibrated sweep'
+      : suggestion.reading.toFixed(2) + ' ' + row.unit + ' · ' + suggestion.angle_deg.toFixed(2) + '°';
+    const evidence = document.createElement('p');
+    evidence.className = 'muted';
+    evidence.textContent = 'Needle body visible for ' + Math.round(suggestion.visible_px) + ' of ' +
+      Math.round(suggestion.window_px) + ' px scanned. ' +
+      (state.evidenceDismissed
+        ? 'Use Locate needle body to highlight the visible runs on the photo; missing parts stay blank.'
+        : 'The visible runs are highlighted on the photo; missing parts stay blank.');
+    card.append(value, evidence);
+    const matches = row.angle_deg !== null && row.angle_deg !== undefined &&
+      angleDelta(row.angle_deg, suggestion.angle_deg) < 0.75;
+    if (matches) {
+      const note = document.createElement('p');
+      note.className = 'muted';
+      note.textContent = 'The current pointer already follows this axis.';
+      card.append(note);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    if (!state.archived && !matches) {
+      const adopt = document.createElement('button');
+      adopt.textContent = 'Adopt suggestion';
+      adopt.onclick = guard(adoptSuggestion);
+      actions.append(adopt);
+    }
+    const locate = document.createElement('button');
+    locate.className = 'outline';
+    locate.textContent = 'Locate needle body';
+    locate.onclick = guard(locateEvidence);
+    actions.append(locate);
+    card.append(actions);
+  } else {
+    state.evidence = null;
+    const note = document.createElement('p');
+    if (suggestion.state === 'uncertain') {
+      const list = suggestion.candidates.map(candidate => candidate.angle_deg.toFixed(1) + '°').join(' and ');
+      note.textContent = 'The dark traces support more than one needle axis (' + list +
+        '). Choose the needle point by hand — the current reading is unchanged.';
+    } else if (suggestion.state === 'no_pointer') {
+      note.textContent = 'No clear needle body stands out between the hub and the tick band. ' +
+        'Choose the needle point by hand — the current reading is unchanged.';
+    } else {
+      note.textContent = 'The calibrated geometry leaves no band to scan for the needle.';
+    }
+    card.append(note);
+  }
+  area.append(card);
+}
+
+async function adoptSuggestion() {
+  const suggestion = state.suggestion;
+  if (!suggestion || state.archived) return;
+  state.settings.pointer = [...suggestion.point];
+  state.evidence = suggestion.segments;
+  state.evidenceDismissed = false;
+  paint();
+  await inspect();
+  status('Suggested needle axis adopted at ' + suggestion.angle_deg.toFixed(2) + '°.');
+}
+
+async function locateEvidence() {
+  const segments = state.suggestion?.segments || state.evidence;
+  if (!segments || !segments.length) return;
+  state.evidence = segments;
+  state.evidenceDismissed = false;
+  let longest = segments[0];
+  for (const segment of segments) {
+    if (segment.r2 - segment.r1 > longest.r2 - longest.r1) longest = segment;
+  }
+  paint();
+  el('marks').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  await probe([(longest.x1 + longest.x2) / 2, (longest.y1 + longest.y2) / 2]);
+  status('Needle body segment marked on the photo.');
+}
+
 function render(report) {
   const area = el('results');
   const {mode, rows} = report;
   area.replaceChildren();
   if (mode === 'reading') {
     const row = rows[0];
-    if (row.state !== 'in_range') {
+    if (row.state === 'in_range') {
+      const value = document.createElement('p');
+      value.className = 'value';
+      value.append(row.reading.toFixed(2));
+      const unit = document.createElement('small');
+      unit.textContent = row.unit;
+      value.append(unit);
+      const details = document.createElement('p');
+      details.textContent = row.angle_deg.toFixed(2) + '° · pixel ' + row.pointer_x + ', ' + row.pointer_y;
+      area.append(value, details);
+    } else {
       const messages = {choose_pointer: 'Select a point on the needle to take a reading.',
                         at_pivot: 'Choose a needle point away from the center.',
                         outside_scale: 'The selected needle direction is outside the calibrated sweep.'};
-      area.textContent = messages[row.state];
-      return;
+      const note = document.createElement('p');
+      note.textContent = messages[row.state];
+      area.append(note);
     }
-    const value = document.createElement('p');
-    value.className = 'value';
-    value.append(row.reading.toFixed(2));
-    const unit = document.createElement('small');
-    unit.textContent = row.unit;
-    value.append(unit);
-    const details = document.createElement('p');
-    details.textContent = row.angle_deg.toFixed(2) + '° · pixel ' + row.pointer_x + ', ' + row.pointer_y;
-    area.append(value, details);
+    renderSuggestion(area, report.suggestion, row);
+    paint();
     return;
   }
   if (!rows.length) {
@@ -321,6 +457,8 @@ function cursorPoint(event) {
 async function place(point) {
   if (state.tool === 'probe' || state.archived) return probe(point);
   state.settings[state.tool] = point;
+  state.evidence = null;
+  state.evidenceDismissed = state.tool === 'pointer';
   paint();
   await inspect();
 }
@@ -354,6 +492,9 @@ bind('source', 'change', async event => {
   const values = formSettings();
   state.settings = {...values, source: event.target.value};
   state.lastProbe = null;
+  state.suggestion = null;
+  state.evidence = null;
+  state.evidenceDismissed = false;
   updateView();
   await inspect();
 });
@@ -381,6 +522,9 @@ bind('save', 'click', async () => {
 bind('return', 'click', async () => {
   state.archived = null;
   state.lastProbe = null;
+  state.suggestion = null;
+  state.evidence = null;
+  state.evidenceDismissed = false;
   selectTool('pointer');
   updateView();
   await inspect();

@@ -9,7 +9,10 @@ imported photos, calibration, and saved inspections.
    An aligned, same-sized reference photo can be added when you import.
 2. Select the dial center, the low tick, and the high tick on the original photo
    with the image toolbar. Set their numeric values and sweep direction.
-3. Select Pointer and mark a visible point on the needle to take a reading.
+3. Select Pointer and mark a visible point on the needle to take a reading, or
+   adopt the suggested needle axis. Pointer reading highlights the visible
+   needle body the suggestion rests on and leaves reflection gaps blank; when
+   the evidence is ambiguous it asks you to choose the point by hand.
    Use Pixel probe or the coordinate form to check an exact source location.
 4. Inspect radial luminance, a scale-band trace, exposure clipping, or brightness
    spread. Click a profile row to see which source pixel produced it.
