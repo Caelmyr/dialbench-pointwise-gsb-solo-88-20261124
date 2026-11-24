@@ -81,8 +81,23 @@
             <div class="grid2"><label>Inner radius<input id="band_in" type="number" step=".01" min=".08" max="1.4"></label><label>Outer radius<input id="band_out" type="number" step=".01" min=".1" max="1.6"></label></div>
             <div class="grid2"><label>Shadow threshold<input id="dark_cut" type="number" min="0" max="254"></label><label>Highlight threshold<input id="bright_cut" type="number" min="1" max="255"></label></div>
           </details>
+          <div id="reference-row" class="reference-row" hidden>
+            <span id="reference-readout" class="muted"></span>
+            <button id="reference-clear" type="button" class="outline">Use clicked marks</button>
+          </div>
           <button id="persist" class="wide outline">Save calibration</button>
         </fieldset>
+        <div class="suggest">
+          <button id="suggest" class="outline wide" disabled>Suggest centre &amp; reference</button>
+          <div id="suggestion" class="suggestion" aria-live="polite" hidden>
+            <p id="suggestion-summary"></p>
+            <ul id="suggestion-notes"></ul>
+            <div class="actions">
+              <button id="adopt" type="button">Adopt suggestion</button>
+              <button id="dismiss" type="button" class="outline">Keep manual</button>
+            </div>
+          </div>
+        </div>
       </section>
     </aside>
   </div>

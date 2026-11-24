@@ -101,6 +101,24 @@ def install(app, root):
         settings = model.settings(chosen.get("settings"), record)
         return jsonify(analysis.inspect(library, record, settings, model.mode(chosen.get("mode"))))
 
+    @desk.post("/panels/<panel_id>/calibrate")
+    def calibrate(panel_id):
+        chosen = payload()
+        record = library.panel(panel_id)
+        settings = model.settings(chosen.get("settings"), record)
+        return jsonify(analysis.suggest(library, record, settings))
+
+    @desk.post("/panels/<panel_id>/calibrate/adopt")
+    def adopt(panel_id):
+        chosen = payload()
+        record = library.panel(panel_id)
+        library.require_revision(record, chosen.get("revision"))
+        geometry = model.calibration_apply(chosen, record)
+        # The submitted settings win for the two marks and their readings, which
+        # the client forwards exactly as they were clicked.
+        settings = model.settings({**record["settings"], **chosen.get("settings"), **geometry}, record)
+        return jsonify(library.revise(panel_id, chosen.get("revision"), settings))
+
     @desk.post("/panels/<panel_id>/point")
     def point_probe(panel_id):
         chosen = payload()

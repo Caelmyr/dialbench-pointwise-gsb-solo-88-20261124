@@ -9,6 +9,14 @@ imported photos, calibration, and saved inspections.
    An aligned, same-sized reference photo can be added when you import.
 2. Select the dial center, the low tick, and the high tick on the original photo
    with the image toolbar. Set their numeric values and sweep direction.
+   In Dial calibration, **Suggest centre & reference** proposes a centre and a
+   scale reference circle from the printed ticks. The proposal is drawn over the
+   original photo; adopt it or keep the manual marks. Adopting keeps both clicked
+   marks and their values, takes the sweep direction from the new centre and makes
+   the Scale band scan follow the confirmed reference radius, whatever end of a
+   thick tick a mark sits on. A partly hidden scale still votes with its visible
+   arc; a more complete protective ring that does not share the tick centre is
+   reported and ignored instead of pulling the centre.
 3. Select Pointer and mark a visible point on the needle to take a reading.
    Use Pixel probe or the coordinate form to check an exact source location.
 4. Inspect radial luminance, a scale-band trace, exposure clipping, or brightness
@@ -23,4 +31,8 @@ Photographs are decoded to RGB in their displayed EXIF orientation, stored as
 immutable PNGs, and limited to 14 MiB and four million pixels per upload.
 The scale uses a circular, linear angular calibration intended for straight-on
 photos. DialBench does not correct parallax or perspective and does not verify an
-instrument for operational use. The built-in images are synthetic fixtures.
+instrument for operational use. The suggestion always reports its confidence and
+what it ignored; when in doubt, keep the manual calibration. The built-in images
+are synthetic fixtures.
+
+Run the checks with `python -m unittest discover -s tests`.

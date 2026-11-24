@@ -12,10 +12,13 @@ def geometry(settings):
     start = model.angle(center, settings["low_mark"])
     end = model.angle(center, settings["high_mark"])
     sign = 1 if settings["clockwise"] else -1
+    radius = settings.get("scale_radius")
+    if radius is None:
+        radius = (model.distance(center, settings["low_mark"]) +
+                  model.distance(center, settings["high_mark"])) / 2
     return {
         "center": center, "start": start, "sign": sign, "sweep": ((end - start) * sign) % 360,
-        "radius": (model.distance(center, settings["low_mark"]) +
-                   model.distance(center, settings["high_mark"])) / 2,
+        "radius": radius,
     }
 
 
@@ -138,6 +141,13 @@ def inspect(library, record, settings, mode):
         else:
             rows = contrast_report(image, dial)
     return {"mode": mode, "heading": model.MODES[mode], "settings": settings, "geometry": dial, "rows": rows}
+
+
+def suggest(library, record, settings):
+    """Propose a centre and a reference circle from the original photo."""
+    from . import calibrate
+    image = frame.luma(frame.pixels(library, record, settings["source"]))
+    return calibrate.suggest(image, settings)
 
 
 def pixel_probe(library, record, settings, point):

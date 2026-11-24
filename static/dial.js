@@ -3,7 +3,8 @@
 const el = id => document.getElementById(id);
 const defaultMode = 'reading';
 const fields = ['low_value', 'high_value', 'unit', 'clockwise', 'band_in', 'band_out', 'dark_cut', 'bright_cut'];
-const state = {panel: null, settings: null, archived: null, tool: 'pointer', lastProbe: null, request: 0};
+const state = {panel: null, settings: null, archived: null, tool: 'pointer', lastProbe: null,
+  request: 0, suggestion: null, suggesting: false};
 
 function status(message, error = false) {
   el('status').textContent = message;
@@ -107,7 +108,8 @@ function updateView() {
   el('source-link').href = imageUrl + query + '&download=1';
   el('source-link').hidden = false;
   for (const field of fields) el(field).value = config[field];
-  for (const id of ['mode', 'analyze', 'save', 'settings', 'source']) el(id).disabled = Boolean(archived);
+  const locked = Boolean(archived);
+  for (const id of ['mode', 'analyze', 'save', 'settings', 'source', 'suggest']) el(id).disabled = locked;
   document.querySelectorAll('[data-tool]').forEach(button => {
     button.disabled = Boolean(archived && button.dataset.tool !== 'probe');
   });
@@ -119,9 +121,27 @@ function updateView() {
     el('csv').href = base + '/report.csv';
     el('overlay').href = base + '/overlay.png?download=1';
   }
+  referenceRow();
   el('probe-result').textContent = '';
   el('cursor').textContent = 'Original image coordinates';
   archives();
+  paint();
+}
+
+function referenceRow() {
+  const config = shown();
+  const radius = config.scale_radius;
+  const present = radius != null;
+  el('reference-row').hidden = state.archived !== null || !present;
+  if (present) {
+    el('reference-readout').textContent = 'Scan radius from suggestion · ' + Number(radius).toFixed(1) + ' px';
+  }
+  el('reference-clear').hidden = state.archived !== null;
+}
+
+function clearSuggestion() {
+  state.suggestion = null;
+  el('suggestion').hidden = true;
   paint();
 }
 
@@ -134,6 +154,7 @@ async function openPanel(id, supplied) {
   state.settings = {...next.settings};
   state.archived = null;
   state.lastProbe = null;
+  state.suggestion = null;
   selectTool('pointer');
   el('mode').value = defaultMode;
   updateView();
@@ -147,6 +168,7 @@ async function openReport(id) {
   if (ticket !== state.request) return;
   state.archived = result;
   state.lastProbe = null;
+  clearSuggestion();
   selectTool('probe');
   updateView();
   render(result);
@@ -175,6 +197,7 @@ function paint() {
     ctx.stroke();
     ctx.setLineDash([]);
   }
+  if (state.suggestion) suggestionRings(ctx, state.suggestion, unit);
   const points = [['center', 'C'], ['low_mark', 'LOW'], ['high_mark', 'HIGH'], ['pointer', 'P']];
   state.lastProbe && points.push(['probe', '•']);
   for (const [key, label] of points) {
@@ -193,6 +216,51 @@ function paint() {
     ctx.fillStyle = key === 'pointer' ? '#ffcb76' : tone;
     ctx.fillText(label, x + unit * 5, y - unit);
   }
+}
+
+function suggestionRings(ctx, proposal, unit) {
+  if (proposal.status !== 'ok' || !proposal.preview) return;
+  const {center, inner_px, outer_px, reference_px, rays} = proposal.preview;
+  ctx.save();
+  ctx.setLineDash([unit * 4, unit * 3]);
+  ctx.strokeStyle = '#ffcb76';
+  ctx.lineWidth = unit * 1.4;
+  for (const radius of [inner_px, outer_px]) {
+    if (radius > 2) {
+      ctx.beginPath();
+      ctx.arc(center[0], center[1], radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+  ctx.strokeStyle = '#ffcb76';
+  ctx.lineWidth = unit * 1.2;
+  for (const [start, end] of rays || []) {
+    ctx.beginPath();
+    ctx.moveTo(...start);
+    ctx.lineTo(...end);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ffcb76';
+  ctx.strokeStyle = '#18261f';
+  ctx.beginPath();
+  ctx.arc(center[0], center[1], unit * 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(center[0] - unit * 8, center[1]);
+  ctx.lineTo(center[0] + unit * 8, center[1]);
+  ctx.moveTo(center[0], center[1] - unit * 8);
+  ctx.lineTo(center[0], center[1] + unit * 8);
+  ctx.stroke();
+  ctx.font = 'bold ' + Math.max(9, unit * 6) + 'px Arial';
+  ctx.fillStyle = '#17271f';
+  const label = 'SUGGESTED · ' + reference_px.toFixed(1) + ' px';
+  ctx.fillRect(center[0] + unit * 10, center[1] - unit * 9,
+    ctx.measureText(label).width + unit * 2, unit * 8);
+  ctx.fillStyle = '#ffcb76';
+  ctx.fillText(label, center[0] + unit * 11, center[1] - unit * 3);
+  ctx.restore();
 }
 
 function plot(rows) {
@@ -321,8 +389,82 @@ function cursorPoint(event) {
 async function place(point) {
   if (state.tool === 'probe' || state.archived) return probe(point);
   state.settings[state.tool] = point;
+  if (state.tool === 'center' || state.tool === 'low_mark' || state.tool === 'high_mark') {
+    // A hand-placed mark invalidates any suggestion drawn over the old geometry.
+    // The adopted reference radius stands until it is cleared, so re-clicking a
+    // mark never widens the scan band on its own.
+    clearSuggestion();
+  }
   paint();
   await inspect();
+}
+
+function suggestionSummary(proposal) {
+  if (proposal.status !== 'ok') return proposal.message;
+  const band = proposal.band;
+  const center = proposal.center.map(value => value.toFixed(1)).join(', ');
+  return 'Suggested centre ' + center + ' · scan radius ' + band.reference_px.toFixed(1) +
+    ' px (' + band.tick_inner_px.toFixed(1) + '–' + band.tick_outer_px.toFixed(1) +
+    ' px tick ends) · ' + proposal.confidence + ' confidence.';
+}
+
+function showSuggestion(proposal) {
+  state.suggestion = proposal;
+  const box = el('suggestion');
+  box.hidden = false;
+  el('suggestion-summary').textContent = suggestionSummary(proposal);
+  const notes = (proposal.notes || []).concat(proposal.reasons || []);
+  el('suggestion-notes').replaceChildren(...notes.map(note => {
+    const line = document.createElement('li');
+    line.textContent = note;
+    return line;
+  }));
+  const adoptable = proposal.status === 'ok' && proposal.proposal;
+  el('adopt').disabled = !adoptable;
+  el('adopt').hidden = !adoptable;
+  paint();
+}
+
+async function requestSuggestion() {
+  if (!state.panel || state.archived || state.suggesting) return;
+  state.suggesting = true;
+  el('suggest').disabled = true;
+  try {
+    const result = await api(route() + '/calibrate', 'POST', {settings: formSettings()});
+    showSuggestion(result);
+    if (result.status === 'ok') {
+      status('Suggestion shown on the original photo. Adopt it or keep the manual marks.');
+    } else {
+      status(result.message, true);
+    }
+  } finally {
+    state.suggesting = false;
+    el('suggest').disabled = Boolean(state.archived);
+  }
+}
+
+async function adoptSuggestion() {
+  const proposal = state.suggestion;
+  if (!proposal || proposal.status !== 'ok' || !proposal.proposal) return;
+  const current = state.panel.id;
+  const draft = proposal.proposal;
+  // Send the calibration exactly as it stands in the form: only the centre,
+  // reference radius and scan band change, so the clicked marks and readings stay.
+  const next = await api(route() + '/calibrate/adopt', 'POST', {
+    revision: state.panel.revision,
+    settings: formSettings(),
+    center: draft.center,
+    ref_radius: draft.ref_radius,
+    band_in: draft.band_in,
+    band_out: draft.band_out,
+  });
+  if (current !== state.panel.id) return;
+  state.panel = next;
+  state.settings = {...next.settings};
+  clearSuggestion();
+  updateView();
+  await inspect();
+  status('Suggestion adopted. Your low and high marks and values are unchanged.');
 }
 
 document.querySelectorAll('[data-tool]').forEach(button => {
@@ -359,6 +501,26 @@ bind('source', 'change', async event => {
 });
 bind('mode', 'change', inspect);
 bind('analyze', 'click', inspect);
+bind('suggest', 'click', requestSuggestion);
+bind('dismiss', 'click', () => {
+  clearSuggestion();
+  status('Kept the current manual calibration.');
+});
+bind('adopt', 'click', adoptSuggestion);
+bind('reference-clear', 'click', async () => {
+  if (!state.panel || state.archived) return;
+  const current = state.panel.id;
+  // An explicit null tells the server to drop the adopted radius; omitting it
+  // would keep the stored value.
+  const next = await api(route() + '/settings', 'PUT',
+    {revision: state.panel.revision, settings: {...formSettings(), scale_radius: null}});
+  if (current !== state.panel.id) return;
+  state.panel = next;
+  state.settings = {...next.settings};
+  updateView();
+  await inspect();
+  status('The scan now follows the clicked marks again.');
+});
 bind('persist', 'click', async () => {
   const current = state.panel.id;
   const next = await api(route() + '/settings', 'PUT', {revision: state.panel.revision, settings: formSettings()});

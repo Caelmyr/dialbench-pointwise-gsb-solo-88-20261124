@@ -108,11 +108,39 @@ def settings(value, record):
     if band_out - band_in < .02 or dark >= bright:
         raise Invalid("The upper scan radius and highlight threshold must be higher.")
     pointer = selected["pointer"]
-    return {
+    reference = selected.get("scale_radius")
+    if override and "scale_radius" in override and override["scale_radius"] is None:
+        # An explicit null clears an adopted reference so the scan follows the
+        # clicked marks again; merely omitting the field keeps the stored one.
+        reference = None
+    result = {
         **coords, "source": role, "pointer": point(pointer, record) if pointer is not None else None,
         "clockwise": direction, "low_value": low, "high_value": high,
         "unit": text(selected["unit"], "units", 20), "band_in": band_in,
         "band_out": band_out, "dark_cut": dark, "bright_cut": bright,
+    }
+    if reference is not None:
+        # A reference radius adopted from a suggestion outranks the clicked marks,
+        # so a mark on the inner or outer end of a thick tick cannot move the scan.
+        result["scale_radius"] = round(number(reference, "Scale reference radius", 3, 1e5), 2)
+    return result
+
+
+def calibration_apply(value, record):
+    """Read the geometry of an adopted suggestion.
+
+    Everything else in the submitted settings, including both clicked marks and
+    their readings, is carried through untouched.
+    """
+    chosen = document(value)
+    band_in = number(chosen.get("band_in"), "Inner scan radius", .08, 1.4)
+    band_out = number(chosen.get("band_out"), "Outer scan radius", .1, 1.6)
+    if band_out - band_in < .02:
+        raise Invalid("The upper scan radius must be higher than the inner one.")
+    return {
+        "center": point(chosen.get("center"), record),
+        "scale_radius": round(number(chosen.get("ref_radius"), "Reference radius", 3, 1e5), 2),
+        "band_in": band_in, "band_out": band_out,
     }
 
 
